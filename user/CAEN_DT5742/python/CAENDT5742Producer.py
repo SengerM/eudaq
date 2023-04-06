@@ -24,9 +24,14 @@ class CAENDT5742Producer(pyeudaq.Producer):
 
 	@exception_handler
 	def DoInitialise(self):
-		LinkNum = int(self.GetInitItem('LinkNum'))
-		if not hasattr(self, '_digitizer'):
-			self._digitizer = CAEN_DT5742_Digitizer(LinkNum=LinkNum)
+		LinkNum = self.GetInitItem('LinkNum')
+		if LinkNum == '': # This happens when the parameter is not specified.
+			raise RuntimeError(f'The init parameter `LinkNum` (type int) must be provided in the init file.')
+		try:
+			LinkNum = int(LinkNum)
+		except Exception as e:
+			raise ValueError(f'The parameter `LinkNum` must be an integer, received {repr(LinkNum)}. ')
+		self._digitizer = CAEN_DT5742_Digitizer(LinkNum=LinkNum)
 		EUDAQ_INFO(f'CAENDT5742Producer: DoInitialise, connected with {self._digitizer.idn}')
 
 	@exception_handler
@@ -91,7 +96,8 @@ class CAENDT5742Producer(pyeudaq.Producer):
 	def DoReset(self):
 		EUDAQ_INFO('CAENDT5742Producer: DoReset')
 		if hasattr(self, '_digitizer'):
-			self._digitizer.reset()
+			self._digitizer.close()
+			delattr(self, '_digitizer')
 		self.is_running = 0
 
 	@exception_handler
