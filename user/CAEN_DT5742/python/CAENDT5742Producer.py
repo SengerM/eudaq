@@ -92,6 +92,17 @@ class CAENDT5742Producer(pyeudaq.Producer):
 		self._digitizer.set_fast_trigger_digitizing(enabled=True)
 		self._digitizer.enable_channels(group_1=True, group_2=False)
 		self._digitizer.set_fast_trigger_DC_offset(V=0)
+		
+		# Enable busy signal on GPO:
+		self._digitizer.write_register(
+			address = 0x811C, # Front Panel I/O Control, see '742 Raw Waveform Registers Description' in https://www.caen.it/products/dt5742/ → Downloads.
+			data = (0
+				| 0b1<<0 # TTL standard.
+				| 0b01<<16 #  Motherboard Probes: TRG‐OUT/GPO is used to propagate signals of the motherboards according to bits[19:18].
+				| 0b11<<18 # BUSY/UNLOCK: this is the board BUSY in case of ROC FPGA firmware rel. 4.5 or lower. This probe can be selected according to bit[20].
+				| 0b0<<20 # If bits[19:18] = 11, then bit[20] options are: 0 = Board BUSY.
+			)
+		)
 
 	@exception_handler
 	def DoStartRun(self):
