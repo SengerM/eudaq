@@ -4,3 +4,23 @@ Use a [CAEN DT5742 digitizer](https://www.caen.it/products/dt5742/) within the E
 
 ![Picture of the DT5742 digitizer](https://www.caen.it/wp-content/uploads/2017/10/DT5742S_caen-1.jpg)
 
+## Usage
+
+Settings to be specified in the init file:
+
+- `LinkNum`: `int`
+	Number of link to connect to the CAEN, usually `0`, `1` or so. For more info look for `LinkNum` in the [CAENDigitizer library](https://www.caen.it/products/caendigitizer-library/).
+
+Settings to be specified in the config file:
+
+For the most up to date documentation about these parameters, look for the `CONFIGURE_PARAMS` dictionary in the file [CAENDT5742Producer.py](python/CAENDT5742Producer.py). It is self explanatory.
+
+- `sampling_frequency_MHz`: `int`, default `5000`
+- `max_num_events_BLT`: `int`, default `1`
+	Number of events to be transferred from the digitizer to the computer on each data transfer. For more info look for *MaxNumEventsBLT* in the [CAENDigitizer library](https://www.caen.it/products/caendigitizer-library/).
+- `fast_trigger_threshold_ADCu`, `int`, mandatory
+	Trigger threshold in ADC units (16 bits). For more information look for *GroupFastTriggerThreshold* in the [CAENDigitizer library](https://www.caen.it/products/caendigitizer-library/).
+- `post_trigger_size`: `int`, default `1`
+	This is similar to the *trigger delay* in an oscilloscope. For more info look for *PostTriggerSize* in the [CAENDigitizer library](https://www.caen.it/products/caendigitizer-library/).
+- `trigger_polarity`: `str`, mandatory
+	Either `'rising'` or `'falling'`.
