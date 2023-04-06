@@ -32,7 +32,6 @@ class CAENDT5742Producer(pyeudaq.Producer):
 		except Exception as e:
 			raise ValueError(f'The parameter `LinkNum` must be an integer, received {repr(LinkNum)}. ')
 		self._digitizer = CAEN_DT5742_Digitizer(LinkNum=LinkNum)
-		EUDAQ_INFO(f'CAENDT5742Producer: DoInitialise, connected with {self._digitizer.idn}')
 
 	@exception_handler
 	def DoConfigure(self):
@@ -61,7 +60,6 @@ class CAENDT5742Producer(pyeudaq.Producer):
 			),
 		}
 		
-		EUDAQ_INFO('CAENDT5742Producer: DoConfigure')
 		self._digitizer.reset() # Always better to start in a known state.
 		
 		# Parse parameters and raise errors if necessary:
@@ -81,7 +79,7 @@ class CAENDT5742Producer(pyeudaq.Producer):
 			if CONFIGURE_PARAMS[param_name].get('set_method') is not None: # Then we can automatically set it here, otherwise do it manually below.
 				getattr(self._digitizer, CONFIGURE_PARAMS[param_name]['set_method'])(CONFIGURE_PARAMS[param_name]['value'])
 		
-		# Manual configuration of parameteres:
+		# Manual configuration of parameters:
 		for ch in [0,1]:
 			self._digitizer.set_trigger_polarity(channel=ch, edge=CONFIGURE_PARAMS['trigger_polarity']['value'])
 		
@@ -96,19 +94,16 @@ class CAENDT5742Producer(pyeudaq.Producer):
 
 	@exception_handler
 	def DoStartRun(self):
-		EUDAQ_INFO('CAENDT5742Producer: DoStartRun')
 		self._digitizer.start_acquisition()
 		self.is_running = 1
 		
 	@exception_handler
 	def DoStopRun(self):
-		EUDAQ_INFO('CAENDT5742Producer: DoStopRun')
 		self._digitizer.stop_acquisition()
 		self.is_running = 0
 
 	@exception_handler
 	def DoReset(self):
-		EUDAQ_INFO('CAENDT5742Producer: DoReset')
 		if hasattr(self, '_digitizer'):
 			self._digitizer.close()
 			delattr(self, '_digitizer')
@@ -116,7 +111,6 @@ class CAENDT5742Producer(pyeudaq.Producer):
 
 	@exception_handler
 	def RunLoop(self):
-		EUDAQ_INFO("CAENDT5742Producer: Start of RunLoop")
 		n_trigger = 0;
 		while(self.is_running):
 			event = pyeudaq.Event("RawEvent", "sub_name")
@@ -130,7 +124,6 @@ class CAENDT5742Producer(pyeudaq.Producer):
 			)
 			self.SendEvent(event)
 			n_trigger += 1
-		EUDAQ_INFO("CAENDT5742Producer: End of RunLoop")
 
 if __name__ == "__main__":
 	import time
