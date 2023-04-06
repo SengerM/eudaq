@@ -56,12 +56,15 @@ class CAENDT5742Producer(pyeudaq.Producer):
 				default = 1,
 				type = int,
 			),
+			'trigger_polarity': dict(
+				type = str,
+			),
 		}
 		
 		EUDAQ_INFO('CAENDT5742Producer: DoConfigure')
 		self._digitizer.reset() # Always better to start in a known state.
 		
-		# Parse parameters and raise errors if necessary...
+		# Parse parameters and raise errors if necessary:
 		for param_name in CONFIGURE_PARAMS:
 			received_param_value = self.GetConfigItem(param_name)
 			param_value_to_be_configured = received_param_value if received_param_value != '' else CONFIGURE_PARAMS[param_name].get('default')
@@ -71,9 +74,18 @@ class CAENDT5742Producer(pyeudaq.Producer):
 				param_value_to_be_configured = CONFIGURE_PARAMS[param_name]['type'](param_value_to_be_configured)
 			except Exception as e:
 				raise ValueError(f'The parameter `{param_name}` must be of type {CONFIGURE_PARAMS[param_name]["type"]}, received {repr(received_param_value)}. ')
-			getattr(self._digitizer, CONFIGURE_PARAMS[param_name]['set_method'])(param_value_to_be_configured)
-			EUDAQ_INFO(f'CAENDT5742Producer: {repr(param_name)} was configured.')
+			CONFIGURE_PARAMS[param_name]['value'] = param_value_to_be_configured
 		
+		# Automatically configure those parameters which are easy to configure:
+		for param_name in CONFIGURE_PARAMS:
+			if CONFIGURE_PARAMS[param_name].get('set_method') is not None: # Then we can automatically set it here, otherwise do it manually below.
+				getattr(self._digitizer, CONFIGURE_PARAMS[param_name]['set_method'])(CONFIGURE_PARAMS[param_name]['value'])
+		
+		# Manual configuration of parameteres:
+		for ch in [0,1]:
+			self._digitizer.set_trigger_polarity(channel=ch, edge=CONFIGURE_PARAMS['trigger_polarity']['value'])
+		
+		# Some non-configurable settings:
 		self._digitizer.set_record_length(1024)
 		self._digitizer.set_acquisition_mode('sw_controlled')
 		self._digitizer.set_ext_trigger_input_mode('disabled')
@@ -81,8 +93,6 @@ class CAENDT5742Producer(pyeudaq.Producer):
 		self._digitizer.set_fast_trigger_digitizing(enabled=True)
 		self._digitizer.enable_channels(group_1=True, group_2=False)
 		self._digitizer.set_fast_trigger_DC_offset(V=0)
-		for ch in [0,1]:
-			self._digitizer.set_trigger_polarity(channel=ch, edge='rising')
 
 	@exception_handler
 	def DoStartRun(self):
