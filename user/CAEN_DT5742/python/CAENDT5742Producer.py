@@ -125,17 +125,20 @@ class CAENDT5742Producer(pyeudaq.Producer):
 	def RunLoop(self):
 		n_trigger = 0;
 		while(self.is_running):
-			event = pyeudaq.Event("RawEvent", "sub_name")
-			event.SetTriggerN(n_trigger)
-			serialized_data = pickle.dumps(
-				self._digitizer.get_waveforms(get_time=True, get_ADCu_instead_of_volts=True)
-			)
-			event.AddBlock(
-				0, # `id`, whatever that means.
-				serialized_data, # `data`, the data to append.
-			)
-			self.SendEvent(event)
-			n_trigger += 1
+			if self._digitizer.get_acquisition_status()['at least one event available for readout'] == True:
+				self._digitizer.stop_acquisition() # Make sure it does not keep acquiring new data.
+				event = pyeudaq.Event("RawEvent", "sub_name")
+				event.SetTriggerN(n_trigger)
+				waveforms = self._digitizer.get_waveforms(get_time=True, get_ADCu_instead_of_volts=True)
+				serialized_data = pickle.dumps(waveforms) # Probably have to change this.
+				event.AddBlock(
+					0, # `id`, whatever that means.
+					serialized_data, # `data`, the data to append.
+				)
+				self.SendEvent(event)
+				n_trigger += 1
+				self._digitizer.lower_busy_signal(False)
+				self._digitizer.start_acquisition() # Let it acquire new data.
 
 if __name__ == "__main__":
 	import time
