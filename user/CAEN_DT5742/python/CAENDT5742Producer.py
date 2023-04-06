@@ -1,7 +1,8 @@
 #! /usr/bin/env python3
 # load binary lib/pyeudaq.so
 import sys
-sys.path.insert(1, '/home/msenger/code/eudaq/lib') # Added this for testing, otherwise get error to import `pyeudaq`.
+from pathlib import Path
+sys.path.insert(1, str((Path(__file__).parent.parent.parent.parent/'lib').resolve())) # Here is where `pyeudaq` lies.
 import pyeudaq
 from pyeudaq import EUDAQ_INFO, EUDAQ_ERROR
 from CAENpy.CAENDigitizer import CAEN_DT5742_Digitizer # https://github.com/SengerM/CAENpy
