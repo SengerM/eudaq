@@ -59,15 +59,19 @@ class CAENDT5742Producer(pyeudaq.Producer):
 		}
 		
 		EUDAQ_INFO('CAENDT5742Producer: DoConfigure')
-		self._digitizer.reset()
+		self._digitizer.reset() # Always better to start in a known state.
 		
+		# Parse parameters and raise errors if necessary...
 		for param_name in CONFIGURE_PARAMS:
-			_ = self.GetConfigItem(param_name)
-			CONFIGURE_PARAMS[param_name]['value'] = CONFIGURE_PARAMS[param_name]['type'](_) if _ != '' else CONFIGURE_PARAMS[param_name].get('default')
-			param_value = CONFIGURE_PARAMS[param_name]['value']
-			if param_value is None: # This means it is mandatory and was not specified, i.e. there is no default value.
+			received_param_value = self.GetConfigItem(param_name)
+			param_value_to_be_configured = received_param_value if received_param_value != '' else CONFIGURE_PARAMS[param_name].get('default')
+			if param_value_to_be_configured is None: # This means it is mandatory and was not specified, i.e. there is no default value.
 				raise RuntimeError(f'Configuration parameter {repr(param_name)} is mandatory and was not specified in the configuration file. ')
-			getattr(self._digitizer, CONFIGURE_PARAMS[param_name]['set_method'])(param_value)
+			try: # Convert to the correct data type...
+				param_value_to_be_configured = CONFIGURE_PARAMS[param_name]['type'](param_value_to_be_configured)
+			except Exception as e:
+				raise ValueError(f'The parameter `{param_name}` must be of type {CONFIGURE_PARAMS[param_name]["type"]}, received {repr(received_param_value)}. ')
+			getattr(self._digitizer, CONFIGURE_PARAMS[param_name]['set_method'])(param_value_to_be_configured)
 			EUDAQ_INFO(f'CAENDT5742Producer: {repr(param_name)} was configured.')
 		
 		self._digitizer.set_record_length(1024)
