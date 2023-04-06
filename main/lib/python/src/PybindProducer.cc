@@ -84,11 +84,11 @@ void init_pybind_producer(py::module &m){
   producer_.def("IsConnected", &eudaq::Producer::IsConnected);
   producer_.def("GetConfiguration", &eudaq::Producer::GetConfiguration);
   producer_.def("GetInitConfiguration", &eudaq::Producer::GetInitConfiguration);
-//  producer_.def("GetConfigKeys",[](const eudaq::Producer &p){return p.GetConfiguration()->Keylist();});
-//  producer_.def("GetConfigItem", &eudaq::Producer::GetConfigItem,
-//		"Get an item from Producer's config section", py::arg("key"));
-//  producer_.def("GetInitItem", &eudaq::Producer::GetInitItem,
-//		"Get an item from Producer's init section", py::arg("key")
-//		);
-//
+  producer_.def("GetConfigKeys",[](const eudaq::Producer &p){return p.GetConfiguration()->Keylist();});
+  producer_.def("GetConfigItem", &eudaq::Producer::GetConfigItem,
+		"Get an item from Producer's config section", py::arg("key"));
+  producer_.def("GetInitItem", &eudaq::Producer::GetInitItem,
+		"Get an item from Producer's init section", py::arg("key")
+		);
+
 }
