@@ -7,6 +7,25 @@ import pyeudaq
 from pyeudaq import EUDAQ_INFO, EUDAQ_ERROR
 from CAENpy.CAENDigitizer import CAEN_DT5742_Digitizer # https://github.com/SengerM/CAENpy
 import pickle
+import ast
+
+def parse_channels_mapping(channels_mapping_str:str):
+	"""Parse the `channels_mapping` config parameter and returns the 
+	expected dictionary. Also raises `ValueError` if anything is wrong."""
+	try:
+		channels_mapping = ast.literal_eval(channels_mapping_str)
+	except Exception as e:
+		raise ValueError(f'Cannot parse `channels_mapping` into a Python object, probably there is a syntax error in your config file. The error raised by the method in charge of the parsing is: {repr(e)}')
+	if not isinstance(channels_mapping, dict):
+		raise ValueError(f'`channels_mapping` should be a dictionary, received instead an object of type {type(channels_mapping)}')
+	for k,i in channels_mapping.items():
+		if not isinstance(k, str):
+			raise ValueError(f'The keys of `channels_mapping` must be strings containing the names of each plane, but received `{repr(k)}` of type {type(k)}')
+		if not isinstance(i, list) or any([not isinstance(_,list) for _ in i]) or any([len(i[0])!=len(_) for _ in i]):
+			raise ValueError(f'Each item of `channels_mapping` must be a two dimensional array specified as a list of lists with dimensions X×Y being X the number of pixels in x and Y the number of pixels in Y')
+		if any([not isinstance(_,str) for __ in i for _ in __]):
+			raise ValueError(f'The elements inside the lists of `channels_mapping` must be strings with the channels names from the CAEN, e.g. `"CH1"`.')
+	return channels_mapping
 
 def exception_handler(method):
 	def inner(*args, **kwargs):
@@ -62,6 +81,9 @@ class CAENDT5742Producer(pyeudaq.Producer):
 		}
 		
 		self._digitizer.reset() # Always better to start in a known state.
+		
+		channels_mapping_str = self.GetConfigItem('channels_mapping')
+		self.channels_mapping = parse_channels_mapping(channels_mapping_str)
 		
 		# Parse parameters and raise errors if necessary:
 		for param_name in CONFIGURE_PARAMS:
