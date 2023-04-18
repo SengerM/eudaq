@@ -8,6 +8,9 @@ from pyeudaq import EUDAQ_INFO, EUDAQ_ERROR
 from CAENpy.CAENDigitizer import CAEN_DT5742_Digitizer # https://github.com/SengerM/CAENpy
 import pickle
 import ast
+import numpy
+
+DIGITIZER_RECORD_LENGTH = 1024
 
 def parse_channels_mapping(channels_mapping_str:str):
 	"""Parse the `channels_mapping` config parameter and returns the 
@@ -84,6 +87,7 @@ class CAENDT5742Producer(pyeudaq.Producer):
 		
 		channels_mapping_str = self.GetConfigItem('channels_mapping')
 		self.channels_mapping = parse_channels_mapping(channels_mapping_str)
+		self.channels_names_list = sorted([self.channels_mapping[ch][i][j] for j in range(len(self.channels_mapping[ch][i])) for i in range(len(self.channels_mapping[ch])) for ch in self.channels_mapping]) # This is the order in which the data will be stored, i.e. which channel first, which second, etc.
 		
 		# Parse parameters and raise errors if necessary:
 		for param_name in CONFIGURE_PARAMS:
@@ -107,7 +111,7 @@ class CAENDT5742Producer(pyeudaq.Producer):
 			self._digitizer.set_trigger_polarity(channel=ch, edge=CONFIGURE_PARAMS['trigger_polarity']['value'])
 		
 		# Some non-configurable settings:
-		self._digitizer.set_record_length(1024)
+		self._digitizer.set_record_length(DIGITIZER_RECORD_LENGTH)
 		self._digitizer.set_acquisition_mode('sw_controlled')
 		self._digitizer.set_ext_trigger_input_mode('disabled')
 		self._digitizer.set_fast_trigger_mode(enabled=True)
@@ -148,19 +152,35 @@ class CAENDT5742Producer(pyeudaq.Producer):
 		n_trigger = 0;
 		while(self.is_running):
 			if self._digitizer.get_acquisition_status()['at least one event available for readout'] == True:
-				self._digitizer.stop_acquisition() # Make sure it does not keep acquiring new data.
-				event = pyeudaq.Event("RawEvent", "sub_name")
+				waveforms = self._digitizer.get_waveforms(get_time=False, get_ADCu_instead_of_volts=True)
+				serialized_data = numpy.concatenate(
+					[waveforms[0][ch]['Amplitude (ADCu)'] for ch in self.channels_names_list],
+					dtype = numpy.float32, # Hardcode data type to be sure it is always the same. (Though you would expect `int` here, CAENDigitizer library returns floats...)
+				)
+				
+				event = pyeudaq.Event("RawEvent", "sub_name") # Not sure what is supposed to be the strings here...
 				event.SetTriggerN(n_trigger)
-				waveforms = self._digitizer.get_waveforms(get_time=True, get_ADCu_instead_of_volts=True)
-				serialized_data = pickle.dumps(waveforms) # Probably have to change this.
 				event.AddBlock(
-					0, # `id`, whatever that means.
+					n_trigger, # `id`, whatever that means.
 					serialized_data, # `data`, the data to append.
 				)
+				
+				if n_trigger == 0: # Add "header information".
+					event.SetBORE() # beginning-of-run-event (BORE). http://eudaq.github.io/manual/EUDAQUserManual_v2_0_1.pdf#glo%3ABORE
+					event.SetTag('channels_mapping_str', repr(self.channels_mapping)) # Literally whatever the `channels_mapping` parameter in the config file was, e.g. `{'DUT_1': [['CH0','CH1'],['CH2','CH3']], 'DUT_2': [['CH4','CH5'],['CH6','CH7']]}`.
+					event.SetTag('channels_names_list', repr(self.channels_names_list)) # A list with the channels that were acquired and in the order they are stored in the raw data, e.g. `['CH0','CH1','CH2',...]`
+					event.SetTag('number_of_DUTs', len(self.channels_mapping)) # Number of DUTs that were specified in `channels_mapping` in the config file.
+					event.SetTag('sampling_frequency_MHz', self._digitizer.get_sampling_frequency())
+					event.SetTag('n_samples_per_waveform', DIGITIZER_RECORD_LENGTH) # Number of samples per waveform to decode the raw data.
+					n_dut = 0
+					for dut_name, dut_channels in self.channels_mapping.items():
+						dut_label = f'DUT_{n_dut}' # DUT_0, DUT_1, ...
+						event.SetTag(f'{dut_label}_name', dut_name) # String with the name of the DUT, defined by the user in the config file as the key of the `channels_mapping` dictionary.
+						event.SetTag(f'{dut_label}_channels', repr(dut_channels)) # List with channels names, e.g. `"[['CH0','CH1'],['CH2','CH3']]"`.
+						event.SetTag(f'{dut_label}_n_channels', sum([len(_) for _ in dut_channels])) # Number of channels (i.e. number of waveforms) belonging to this DUT.
+				
 				self.SendEvent(event)
 				n_trigger += 1
-				self._digitizer.lower_busy_signal(False)
-				self._digitizer.start_acquisition() # Let it acquire new data.
 
 if __name__ == "__main__":
 	import time
