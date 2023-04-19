@@ -171,16 +171,16 @@ class CAENDT5742Producer(pyeudaq.Producer):
 					event.SetTag('channels_mapping_str', repr(self.channels_mapping)) # Literally whatever the `channels_mapping` parameter in the config file was, e.g. `{'DUT_1': [['CH0','CH1'],['CH2','CH3']], 'DUT_2': [['CH4','CH5'],['CH6','CH7']]}`.
 					event.SetTag('channels_names_list', repr(self.channels_names_list)) # A list with the channels that were acquired and in the order they are stored in the raw data, e.g. `['CH0','CH1','CH2',...]`
 					event.SetTag('channels_names_list', repr(self.channels_names_list)) # A list with the channels that were acquired and in the order they are stored in the raw data, e.g. `['CH0','CH1','CH2',...]`
-					event.SetTag('number_of_DUTs', len(self.channels_mapping)) # Number of DUTs that were specified in `channels_mapping` in the config file.
-					event.SetTag('sampling_frequency_MHz', self._digitizer.get_sampling_frequency()) # Integer number.
-					event.SetTag('n_samples_per_waveform', DIGITIZER_RECORD_LENGTH) # Number of samples per waveform to decode the raw data.
+					event.SetTag('number_of_DUTs', repr(len(self.channels_mapping))) # Number of DUTs that were specified in `channels_mapping` in the config file.
+					event.SetTag('sampling_frequency_MHz', repr(self._digitizer.get_sampling_frequency())) # Integer number.
+					event.SetTag('n_samples_per_waveform', repr(DIGITIZER_RECORD_LENGTH)) # Number of samples per waveform to decode the raw data.
 					n_dut = 0
 					for dut_name, dut_channels in self.channels_mapping.items():
 						dut_label = f'DUT_{n_dut}' # DUT_0, DUT_1, ...
-						event.SetTag(f'{dut_label}_name', dut_name) # String with the name of the DUT, defined by the user in the config file as the key of the `channels_mapping` dictionary.
+						event.SetTag(f'{dut_label}_name', repr(dut_name)) # String with the name of the DUT, defined by the user in the config file as the key of the `channels_mapping` dictionary.
 						event.SetTag(f'{dut_label}_channels_matrix', repr(dut_channels)) # List with channels names, e.g. `"[['CH0','CH1'],['CH2','CH3']]"`.
 						event.SetTag(f'{dut_label}_channels_arrangement', repr([f'{item}: {i},{j}' for i,row in enumerate(dut_channels) for j,item in enumerate(row)])) # End up with something of the form `"['CH0: 0,0', 'CH1: 0,1', 'CH2: 1,0', 'CH3: 1,1']"`
-						event.SetTag(f'{dut_label}_n_channels', sum([len(_) for _ in dut_channels])) # Number of channels (i.e. number of waveforms) belonging to this DUT.
+						event.SetTag(f'{dut_label}_n_channels', repr(sum([len(_) for _ in dut_channels]))) # Number of channels (i.e. number of waveforms) belonging to this DUT.
 				
 				self.SendEvent(event)
 				n_trigger += 1
