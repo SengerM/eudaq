@@ -157,6 +157,7 @@ class CAENDT5742Producer(pyeudaq.Producer):
 					[waveforms[0][ch]['Amplitude (ADCu)'] for ch in self.channels_names_list],
 					dtype = numpy.float32, # Hardcode data type to be sure it is always the same. (Though you would expect `int` here, CAENDigitizer library returns floats...)
 				)
+				serialized_data = serialized_data.tobytes()
 				
 				event = pyeudaq.Event("RawEvent", "sub_name") # Not sure what is supposed to be the strings here...
 				event.SetTriggerN(n_trigger)
