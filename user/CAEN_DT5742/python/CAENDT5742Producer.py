@@ -87,7 +87,7 @@ class CAENDT5742Producer(pyeudaq.Producer):
 		
 		channels_mapping_str = self.GetConfigItem('channels_mapping')
 		self.channels_mapping = parse_channels_mapping(channels_mapping_str)
-		self.channels_names_list = sorted([self.channels_mapping[ch][i][j] for j in range(len(self.channels_mapping[ch][i])) for i in range(len(self.channels_mapping[ch])) for ch in self.channels_mapping]) # This is the order in which the data will be stored, i.e. which channel first, which second, etc.
+		self.channels_names_list = sorted([self.channels_mapping[ch][i][j] for ch in self.channels_mapping for i in range(len(self.channels_mapping[ch])) for j in range(len(self.channels_mapping[ch][i]))]) # This is the order in which the data will be stored, i.e. which channel first, which second, etc.
 		
 		# Parse parameters and raise errors if necessary:
 		for param_name in CONFIGURE_PARAMS:
