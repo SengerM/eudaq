@@ -43,41 +43,49 @@ void CAEN_DT5748RawEvent2StdEventConverter::Initialize(eudaq::EventSPC bore, eud
 	
 	// For each DUT, build a matrix where the elements are integer numbers specifying the position where the respective waveform begins in the raw data:
 	for (size_t n_DUT=0; n_DUT<number_of_DUTs; n_DUT++) {
-		s = bore->GetTag(std::to_string(n_DUT)+"_channels"); // Gets something like e.g. `"[['CH0','CH1'],['CH2','CH3']]"` and want to recover the "vector of vectors of strings" structure.
-		for (std::string c : {"[[", "]]", "'", "\""})
-			s.erase(std::remove(s.begin(), s.end(), c[0]), s.end());
-		// Split the string into a vector of strings:
-		std::vector<std::string> parts;
-		std::string delimiter = "],[";
-		size_t pos = 0;
-		std::string token;
-		while ((pos = s.find(delimiter)) != std::string::npos) {
-			token = s.substr(0, pos);
-			parts.push_back(token);
-			s.erase(0, pos + delimiter.length());
-		}
-		parts.push_back(s);
-		// Split each part into a vector of strings:
-		std::vector<std::vector<std::string>> matrix_with_channels_arrangement_for_this_DUT;
-		delimiter = ",";
-		for (std::string part : parts) {
-			std::vector<std::string> row;
-			pos = 0;
-			while ((pos = part.find(delimiter)) != std::string::npos) {
-				token = part.substr(0, pos);
-				row.push_back(token);
-				part.erase(0, pos + delimiter.length());
+		DUTs_names.push_back(bore->GetTag("DUT_"+std::to_string(n_DUT)+"_name"));
+		s = bore->GetTag("DUT_"+std::to_string(n_DUT)+"_channels_matrix"); // Gets something like e.g. `"[['CH4', 'CH5'], ['CH6', 'CH7']]"`.
+		if (s.empty())
+			EUDAQ_THROW("Cannot get information about the channels to which the DUT named \""+DUTs_names[n_DUT]+"\" was connected.");
+		std::vector<std::string> delims = {"[[", "]]", "'", "\"", " "};
+		for (std::string delim : delims) {
+			size_t pos = s.find(delim);
+			while (pos != std::string::npos) {
+				s.erase(pos, delim.length());
+				pos = s.find(delim, pos);
 			}
-			row.push_back(part);
-			matrix_with_channels_arrangement_for_this_DUT.push_back(row);
 		}
-		
+		// Here `s` looks like e.g. `"CH4,CH5],[CH6,CH7"`.
+		std::vector<std::string> split_s;
+		size_t start_pos = 0;
+		size_t end_pos = s.find("],[");
+		while (end_pos != std::string::npos) {
+			split_s.push_back(s.substr(start_pos, end_pos - start_pos));
+			start_pos = end_pos + 3;
+			end_pos = s.find("],[", start_pos);
+		}
+		split_s.push_back(s.substr(start_pos));
+		// Here `split_s` looks like e.g. `["CH4,CH5"],["CH6,CH7"]` (Python).
+		std::vector<std::vector<std::string>> matrix_with_channels_arrangement_for_this_DUT;
+		for (std::string elem : split_s) {
+			std::vector<std::string> sub_result;
+			size_t sub_start_pos = 0;
+			size_t sub_end_pos = elem.find(",");
+			while (sub_end_pos != std::string::npos) {
+				sub_result.push_back(elem.substr(sub_start_pos, sub_end_pos - sub_start_pos));
+				sub_start_pos = sub_end_pos + 1;
+				sub_end_pos = elem.find(",", sub_start_pos);
+			}
+			sub_result.push_back(elem.substr(sub_start_pos));
+			matrix_with_channels_arrangement_for_this_DUT.push_back(sub_result);
+		}
+		// Here `matrix_with_channels_arrangement_for_this_DUT` should be `[['CH4', 'CH5'], ['CH6', 'CH7']]`.
 		// Now find where each of the channels waveforms begins in the raw data and arrange that into a matrix:
 		std::vector<std::vector<size_t>> matrix2;
 		for (size_t nx=0; nx<matrix_with_channels_arrangement_for_this_DUT.size(); nx++) {
 			std::vector<size_t> row;
 			for (size_t ny=0; ny<matrix_with_channels_arrangement_for_this_DUT[nx].size(); ny++) {
-				auto iterator = std::find(channels_names_list.begin(), channels_names_list.end(), std::string("CH1"));//matrix_with_channels_arrangement_for_this_DUT[nx][ny]);
+				auto iterator = std::find(channels_names_list.begin(), channels_names_list.end(), matrix_with_channels_arrangement_for_this_DUT[nx][ny]);
 				if (iterator != channels_names_list.end()) {
 					row.push_back((iterator - channels_names_list.begin())*n_samples_per_waveform);
 				} else { // This should never happen.
@@ -87,7 +95,6 @@ void CAEN_DT5748RawEvent2StdEventConverter::Initialize(eudaq::EventSPC bore, eud
 			matrix2.push_back(row);
 		}
 		waveform_position.push_back(matrix2); // Finally... In Python this is no more than 5 lines of code.
-		DUTs_names.push_back(bore->GetTag(std::to_string(n_DUT)+"_name"));
 	}
 }
 
@@ -97,11 +104,25 @@ bool CAEN_DT5748RawEvent2StdEventConverter::Converting(eudaq::EventSPC d1, eudaq
 		Initialize(d1, conf);
 	}
 	
-	std::cout << n_samples_per_waveform << std::endl;
-	std::cout << sampling_frequency_MHz << std::endl;
-	std::cout << number_of_DUTs << std::endl;
+	std::cout << "n_samples_per_waveform: " << n_samples_per_waveform << std::endl;
+	std::cout << "sampling_frequency_MHz: " << sampling_frequency_MHz << std::endl;
+	std::cout << "number_of_DUTs: " << number_of_DUTs << std::endl;
+	
+	std::cout << "channels_names_list:" << std::endl;
 	for (std::string _: channels_names_list)
 		std::cout << _ << std::endl;
+	
+	std::cout << "DUTs_names:" << std::endl;
+	for (std::string _: DUTs_names)
+		std::cout << _ << std::endl;
+	
+	std::cout << "waveform_position:" << std::endl;
+	for (size_t n_DUT=0; n_DUT<waveform_position.size(); n_DUT++) {
+		for (size_t nx=0; nx<waveform_position[n_DUT].size(); nx++) {
+			for (size_t ny=0; ny<waveform_position[n_DUT][nx].size(); ny++)
+				std::cout << DUTs_names[n_DUT] << ", " << nx << ", " << ny << ", " << waveform_position[n_DUT][nx][ny] << std::endl;
+		}
+	}
 	
 	EUDAQ_THROW("Not implemented!");
 	//~ PyObject *signals_package = import("signals") // This is what I use normally to parse the waveforms, https://github.com/SengerM/signals
