@@ -116,7 +116,7 @@ class CAENDT5742Producer(pyeudaq.Producer):
 		self._digitizer.set_ext_trigger_input_mode('disabled')
 		self._digitizer.set_fast_trigger_mode(enabled=True)
 		self._digitizer.set_fast_trigger_digitizing(enabled=True)
-		self._digitizer.enable_channels(group_1=True, group_2=False)
+		self._digitizer.enable_channels(group_1=any([f'CH{n}' in self.channels_names_list for n in [0,1,2,3,4,5,6,7]]), group_2=any([f'CH{n}' in self.channels_names_list for n in [8,9,10,11,12,13,14,15]]))
 		self._digitizer.set_fast_trigger_DC_offset(V=0)
 		
 		# Enable busy signal on GPO:
