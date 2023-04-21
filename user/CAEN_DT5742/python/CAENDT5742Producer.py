@@ -159,7 +159,7 @@ class CAENDT5742Producer(pyeudaq.Producer):
 				)
 				serialized_data = serialized_data.tobytes()
 				
-				event = pyeudaq.Event("RawEvent", "sub_name") # Not sure what is supposed to be the strings here...
+				event = pyeudaq.Event("RawEvent", "CAEN_DT5748") # Not sure what these strings exactly are...
 				event.SetTriggerN(n_trigger)
 				event.AddBlock(
 					n_trigger, # `id`, whatever that means.
