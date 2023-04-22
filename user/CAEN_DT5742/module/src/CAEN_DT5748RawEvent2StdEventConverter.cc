@@ -99,9 +99,15 @@ void CAEN_DT5748RawEvent2StdEventConverter::Initialize(eudaq::EventSPC bore, eud
 }
 
 bool CAEN_DT5748RawEvent2StdEventConverter::Converting(eudaq::EventSPC d1, eudaq::StdEventSP d2, eudaq::ConfigSPC conf) const {
-	if (d1->IsBORE()) { // Beginning Of Run Event, this is the header event.
+	auto event = std::dynamic_pointer_cast<const eudaq::RawEvent>(d1);
+	if (event == nullptr) {
+		EUDAQ_ERROR("Received null event.");
+		return false;
+	}
+	
+	if (event->IsBORE()) { // Beginning Of Run Event, this is the header event.
 		EUDAQ_INFO("Starting initialization...");
-		Initialize(d1, conf);
+		Initialize(event, conf);
 	}
 	
 	std::cout << "n_samples_per_waveform: " << n_samples_per_waveform << std::endl;
