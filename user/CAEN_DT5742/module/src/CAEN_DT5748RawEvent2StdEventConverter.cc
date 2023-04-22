@@ -4,6 +4,8 @@
 #include <cstdint>
 //~ #include <Python.h>
 
+#define DIGITIZER_RECORD_LENGTH 1024
+
 class CAEN_DT5748RawEvent2StdEventConverter: public eudaq::StdEventConverter {
 	public:
 		bool Converting(eudaq::EventSPC d1, eudaq::StdEventSP d2, eudaq::ConfigSPC conf) const override;
@@ -171,12 +173,16 @@ bool CAEN_DT5748RawEvent2StdEventConverter::Converting(eudaq::EventSPC d1, eudaq
 		return false;
 	}
 	std::vector<float> raw_data = uint8VectorToFloatVector(event->GetBlock(0));
-	std::cout << raw_data.size() << std::endl;
-	
-	writeCSV(raw_data, "raw_data.csv");
 	
 	//~ PyObject *signals_package = import("signals") // This is what I use normally to parse the waveforms, https://github.com/SengerM/signals
 	
+	for (size_t n_DUT=0; n_DUT<waveform_position.size(); n_DUT++) {
+		for (size_t nx=0; nx<waveform_position[n_DUT].size(); nx++) {
+			for (size_t ny=0; ny<waveform_position[n_DUT][nx].size(); ny++) {
+				std::vector<float> this_pixel_samples(raw_data.begin()+waveform_position[n_DUT][nx][ny], raw_data.begin()+waveform_position[n_DUT][nx][ny]+DIGITIZER_RECORD_LENGTH);
+			}
+		}
+	}
 	//~ auto block_n_list = event->GetBlockNumList();
 	//~ for(auto &block_n: block_n_list){
 		//~ auto block = event->GetBlock(block_n);
