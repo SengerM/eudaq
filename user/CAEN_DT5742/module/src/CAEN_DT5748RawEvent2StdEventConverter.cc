@@ -1,5 +1,7 @@
 #include "eudaq/StdEventConverter.hh"
 #include "eudaq/RawEvent.hh"
+#include <vector>
+#include <cstdint>
 //~ #include <Python.h>
 
 class CAEN_DT5748RawEvent2StdEventConverter: public eudaq::StdEventConverter {
@@ -98,6 +100,40 @@ void CAEN_DT5748RawEvent2StdEventConverter::Initialize(eudaq::EventSPC bore, eud
 	}
 }
 
+#include <fstream>
+
+void writeCSV(std::vector<float> data, std::string filename) {
+    std::ofstream file(filename);
+
+    for (size_t i = 0; i < data.size(); i++) {
+        file << static_cast<int>(data[i]); // convert uint8_t to int and write to file
+        if (i != data.size() - 1) {
+            file << "\n";
+        }
+    }
+    file << std::endl;
+
+    file.close();
+}
+
+std::vector<float> uint8VectorToFloatVector(std::vector<uint8_t> data) {
+	// Everything in this function, except for this single line, was provided to me by ChatGPT. Amazing.
+	std::vector<float> result;
+	result.resize(data.size() / sizeof(float)); // size the result vector appropriately
+	float* resultPtr = reinterpret_cast<float*>(&result[0]); // cast the pointer to float
+
+	uint8_t* dataPtr = &data[0]; // get a pointer to the data in the uint8_t vector
+	size_t dataSize = data.size(); // get the size of the data in the uint8_t vector
+
+	for (size_t i = 0; i < dataSize; i += sizeof(float)) {
+		*resultPtr = *reinterpret_cast<float*>(dataPtr); // cast the value at dataPtr to float and store in result vector
+		resultPtr++;
+		dataPtr += sizeof(float);
+	}
+
+	return result;
+}
+
 bool CAEN_DT5748RawEvent2StdEventConverter::Converting(eudaq::EventSPC d1, eudaq::StdEventSP d2, eudaq::ConfigSPC conf) const {
 	auto event = std::dynamic_pointer_cast<const eudaq::RawEvent>(d1);
 	if (event == nullptr) {
@@ -130,13 +166,20 @@ bool CAEN_DT5748RawEvent2StdEventConverter::Converting(eudaq::EventSPC d1, eudaq
 		}
 	}
 	
-	EUDAQ_THROW("Not implemented!");
+	if (event->NumBlocks() != 1) {
+		EUDAQ_ERROR("One and only one data block per event is expected, but received an event with " + std::to_string(event->NumBlocks()) + " blocks.");
+		return false;
+	}
+	std::vector<float> raw_data = uint8VectorToFloatVector(event->GetBlock(0));
+	std::cout << raw_data.size() << std::endl;
+	
+	writeCSV(raw_data, "raw_data.csv");
+	
 	//~ PyObject *signals_package = import("signals") // This is what I use normally to parse the waveforms, https://github.com/SengerM/signals
-	//~ auto ev = std::dynamic_pointer_cast<const eudaq::RawEvent>(d1);
-	//~ size_t nblocks= ev->NumBlocks();
-	//~ auto block_n_list = ev->GetBlockNumList();
+	
+	//~ auto block_n_list = event->GetBlockNumList();
 	//~ for(auto &block_n: block_n_list){
-		//~ auto block = ev->GetBlock(block_n);
+		//~ auto block = event->GetBlock(block_n);
 		//~ uint8_t n_planes = block[wherever_the_number_of_planes_is];
 		//~ for (uint8_t n_plane = 0; n_plane < n_planes; n_plane++) { // One plane per DUT connected to the digitizer.
 			//~ eudaq::StandardPlane plane(block_n, "LGAD_CAEN", "LGAD_CAEN");
@@ -151,5 +194,6 @@ bool CAEN_DT5748RawEvent2StdEventConverter::Converting(eudaq::EventSPC d1, eudaq
 			//~ d2->AddPlane(plane);
 		//~ }
 	//~ }
+	EUDAQ_THROW("Not implemented!");
 	//~ return true;
 }
