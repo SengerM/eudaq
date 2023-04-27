@@ -2,9 +2,9 @@
 #include "eudaq/RawEvent.hh"
 #include <vector>
 #include <cstdint>
-//~ #include <Python.h>
+#include <algorithm>
 
-#define DIGITIZER_RECORD_LENGTH 1024
+#define DIGITIZER_RECORD_LENGTH 1024 // This setting is also hardcoded in the producer. It can be changed.
 
 class CAEN_DT5748RawEvent2StdEventConverter: public eudaq::StdEventConverter {
 	public:
@@ -102,22 +102,6 @@ void CAEN_DT5748RawEvent2StdEventConverter::Initialize(eudaq::EventSPC bore, eud
 	}
 }
 
-#include <fstream>
-
-void writeCSV(std::vector<float> data, std::string filename) {
-    std::ofstream file(filename);
-
-    for (size_t i = 0; i < data.size(); i++) {
-        file << static_cast<int>(data[i]); // convert uint8_t to int and write to file
-        if (i != data.size() - 1) {
-            file << "\n";
-        }
-    }
-    file << std::endl;
-
-    file.close();
-}
-
 std::vector<float> uint8VectorToFloatVector(std::vector<uint8_t> data) {
 	// Everything in this function, except for this single line, was provided to me by ChatGPT. Amazing.
 	std::vector<float> result;
@@ -136,6 +120,25 @@ std::vector<float> uint8VectorToFloatVector(std::vector<uint8_t> data) {
 	return result;
 }
 
+float median(std::vector<float>& vec) {
+    std::sort(vec.begin(), vec.end());
+    int size = vec.size();
+    if (size % 2 == 0)
+        return (vec[size/2 - 1] + vec[size/2]) / 2.0;
+    else
+        return vec[size/2];
+}
+
+float max(const std::vector<float>& vec) {
+    auto it = std::max_element(vec.begin(), vec.end());
+    return *it;
+}
+
+float amplitude_from_waveform(std::vector<float>& waveform) {
+	float base_line = median(waveform);
+	return max(waveform) - base_line;
+}
+
 bool CAEN_DT5748RawEvent2StdEventConverter::Converting(eudaq::EventSPC d1, eudaq::StdEventSP d2, eudaq::ConfigSPC conf) const {
 	auto event = std::dynamic_pointer_cast<const eudaq::RawEvent>(d1);
 	if (event == nullptr) {
@@ -148,58 +151,36 @@ bool CAEN_DT5748RawEvent2StdEventConverter::Converting(eudaq::EventSPC d1, eudaq
 		Initialize(event, conf);
 	}
 	
-	std::cout << "n_samples_per_waveform: " << n_samples_per_waveform << std::endl;
-	std::cout << "sampling_frequency_MHz: " << sampling_frequency_MHz << std::endl;
-	std::cout << "number_of_DUTs: " << number_of_DUTs << std::endl;
-	
-	std::cout << "channels_names_list:" << std::endl;
-	for (std::string _: channels_names_list)
-		std::cout << _ << std::endl;
-	
-	std::cout << "DUTs_names:" << std::endl;
-	for (std::string _: DUTs_names)
-		std::cout << _ << std::endl;
-	
-	std::cout << "waveform_position:" << std::endl;
-	for (size_t n_DUT=0; n_DUT<waveform_position.size(); n_DUT++) {
-		for (size_t nx=0; nx<waveform_position[n_DUT].size(); nx++) {
-			for (size_t ny=0; ny<waveform_position[n_DUT][nx].size(); ny++)
-				std::cout << DUTs_names[n_DUT] << ", " << nx << ", " << ny << ", " << waveform_position[n_DUT][nx][ny] << std::endl;
-		}
-	}
-	
 	if (event->NumBlocks() != 1) {
 		EUDAQ_ERROR("One and only one data block per event is expected, but received an event with " + std::to_string(event->NumBlocks()) + " blocks.");
 		return false;
 	}
-	std::vector<float> raw_data = uint8VectorToFloatVector(event->GetBlock(0));
 	
-	//~ PyObject *signals_package = import("signals") // This is what I use normally to parse the waveforms, https://github.com/SengerM/signals
+	size_t n_block = 0; // The producer puts all the data in a single block, I guess we ony need to care about that one block. I define this `n_block` variable to make the code more readable.
+	std::vector<float> raw_data = uint8VectorToFloatVector(event->GetBlock(n_block));
+	
+	std::vector<float> samples_times;
+	for (size_t n_sample=0; n_sample<n_samples_per_waveform; n_sample++)
+		samples_times.push_back(n_sample*sampling_frequency_MHz*1e6);
 	
 	for (size_t n_DUT=0; n_DUT<waveform_position.size(); n_DUT++) {
+		eudaq::StandardPlane plane(n_block, DUTs_names[n_DUT]);
+		plane.SetSizeZS(
+			waveform_position[n_DUT].size(), // `w`, number of pixels in the horizontal direction.
+			waveform_position[n_DUT][0].size(), // `h`, number of pixels in the vertical direction.
+			0, // `npix`, no idea...
+			1, // `frames`, no idea...
+			eudaq::StandardPlane::FLAG_DIFFCOORDS | eudaq::StandardPlane::FLAG_ACCUMULATE // `flags`, no idea...
+		);
 		for (size_t nx=0; nx<waveform_position[n_DUT].size(); nx++) {
 			for (size_t ny=0; ny<waveform_position[n_DUT][nx].size(); ny++) {
-				std::vector<float> this_pixel_samples(raw_data.begin()+waveform_position[n_DUT][nx][ny], raw_data.begin()+waveform_position[n_DUT][nx][ny]+DIGITIZER_RECORD_LENGTH);
+				std::vector<float> this_pixel_waveform(raw_data.begin()+waveform_position[n_DUT][nx][ny], raw_data.begin()+waveform_position[n_DUT][nx][ny]+DIGITIZER_RECORD_LENGTH);
+				float amplitude = amplitude_from_waveform(this_pixel_waveform);
+				if (amplitude > 500) // REMOVE THIS HARDCODED VALUE SOMEHOW!!
+					plane.PushPixel(nx, ny, amplitude);
 			}
 		}
+		d2->AddPlane(plane);
 	}
-	//~ auto block_n_list = event->GetBlockNumList();
-	//~ for(auto &block_n: block_n_list){
-		//~ auto block = event->GetBlock(block_n);
-		//~ uint8_t n_planes = block[wherever_the_number_of_planes_is];
-		//~ for (uint8_t n_plane = 0; n_plane < n_planes; n_plane++) { // One plane per DUT connected to the digitizer.
-			//~ eudaq::StandardPlane plane(block_n, "LGAD_CAEN", "LGAD_CAEN");
-			//~ for (size_t n_xpixel = 0; n_xpixel < block[wherever_number_of_xpixels_is]; n_xpixel++) {
-				//~ for (size_t n_ypixel = 0; n_ypixel < block[wherever_number_of_ypixels_is]; n_ypixel++) {
-					//~ PyObject *signal = signals_package->signal_from_samples(block[wherever_nplane_nx_ny_waveform_begins:wherever_nplane_nx_ny_waveform_ends])
-					//~ if (pixel_was_hit(signal)) // E.g. charge > some_threshold or whatever criterion using the waveform.
-						//~ plane.PushPixel(n_xpixel, n_ypixel, signal.charge(), signal.hit_time());
-				//~ }
-			//~ }
-			//~ plane.SetSizeZS(m_sizeX, m_sizeY, 0, 1, eudaq::StandardPlane::FLAG_DIFFCOORDS | eudaq::StandardPlane::FLAG_ACCUMULATE);
-			//~ d2->AddPlane(plane);
-		//~ }
-	//~ }
-	EUDAQ_THROW("Not implemented!");
-	//~ return true;
+	return true;
 }
