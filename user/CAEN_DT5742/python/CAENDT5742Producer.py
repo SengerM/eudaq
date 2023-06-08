@@ -9,6 +9,8 @@ from CAENpy.CAENDigitizer import CAEN_DT5742_Digitizer # https://github.com/Seng
 import pickle
 import ast
 import numpy
+import threading
+import queue
 
 DIGITIZER_RECORD_LENGTH = 1024
 
@@ -141,6 +143,7 @@ class CAENDT5742Producer(pyeudaq.Producer):
 		while self._digitizer.get_acquisition_status()['at least one event available for readout'] == True:
 			# Wait for any remaining data that is still in the memory of the digitizer.
 			time.sleep(.1)
+		self.events_queue.join() # Wait for all the waveforms to be processed.
 		self.is_running = 0
 
 	@exception_handler
@@ -152,41 +155,51 @@ class CAENDT5742Producer(pyeudaq.Producer):
 
 	@exception_handler
 	def RunLoop(self):
-		n_trigger = 0
+		self.events_queue = queue.Queue()
+		
+		def thread_target_function():
+			n_trigger = 0
+			while self.is_running:
+				this_trigger_waveforms = self.events_queue.get()
+				serialized_data = numpy.concatenate(
+					[this_trigger_waveforms[ch]['Amplitude (ADCu)'] for ch in self.channels_names_list],
+					dtype = numpy.float32, # Hardcode data type to be sure it is always the same. (Though you would expect `int` here, CAENDigitizer library returns floats...)
+				)
+				serialized_data = serialized_data.tobytes()
+				
+				event = pyeudaq.Event("RawEvent", "CAEN_DT5748") # Not sure what these strings exactly are...
+				event.SetTriggerN(n_trigger)
+				event.AddBlock(
+					n_trigger, # `id`, whatever that means.
+					serialized_data, # `data`, the data to append.
+				)
+				
+				if n_trigger == 0: # Add "header information".
+					event.SetBORE() # beginning-of-run-event (BORE). http://eudaq.github.io/manual/EUDAQUserManual_v2_0_1.pdf#glo%3ABORE
+					event.SetTag('channels_mapping_str', repr(self.channels_mapping)) # Literally whatever the `channels_mapping` parameter in the config file was, e.g. `{'DUT_1': [['CH0','CH1'],['CH2','CH3']], 'DUT_2': [['CH4','CH5'],['CH6','CH7']]}`.
+					event.SetTag('channels_names_list', repr(self.channels_names_list)) # A list with the channels that were acquired and in the order they are stored in the raw data, e.g. `['CH0','CH1','CH2',...]`
+					event.SetTag('number_of_DUTs', repr(len(self.channels_mapping))) # Number of DUTs that were specified in `channels_mapping` in the config file.
+					event.SetTag('sampling_frequency_MHz', repr(self._digitizer.get_sampling_frequency())) # Integer number.
+					event.SetTag('n_samples_per_waveform', repr(DIGITIZER_RECORD_LENGTH)) # Number of samples per waveform to decode the raw data.
+					n_dut = 0
+					for dut_name, dut_channels in self.channels_mapping.items():
+						dut_label = f'DUT_{n_dut}' # DUT_0, DUT_1, ...
+						event.SetTag(f'{dut_label}_name', repr(dut_name)) # String with the name of the DUT, defined by the user in the config file as the key of the `channels_mapping` dictionary.
+						event.SetTag(f'{dut_label}_channels_matrix', repr(dut_channels)) # List with channels names, e.g. `"[['CH0','CH1'],['CH2','CH3']]"`.
+						event.SetTag(f'{dut_label}_channels_arrangement', repr([f'{item}: {i},{j}' for i,row in enumerate(dut_channels) for j,item in enumerate(row)])) # End up with something of the form `"['CH0: 0,0', 'CH1: 0,1', 'CH2: 1,0', 'CH3: 1,1']"`
+						event.SetTag(f'{dut_label}_n_channels', repr(sum([len(_) for _ in dut_channels]))) # Number of channels (i.e. number of waveforms) belonging to this DUT.
+						n_dut += 1
+				self.SendEvent(event)
+				n_trigger += 1
+				self.events_queue.task_done()
+		
+		threading.Thread(target=thread_target_function, daemon=True).start()
+		
 		while(self.is_running):
 			if self._digitizer.get_acquisition_status()['at least one event available for readout'] == True:
 				waveforms = self._digitizer.get_waveforms(get_time=False, get_ADCu_instead_of_volts=True)
 				for this_trigger_waveforms in waveforms: # Waveforms is a list of dictionaries, each of which contains the waveforms from each trigger.
-					serialized_data = numpy.concatenate(
-						[this_trigger_waveforms[ch]['Amplitude (ADCu)'] for ch in self.channels_names_list],
-						dtype = numpy.float32, # Hardcode data type to be sure it is always the same. (Though you would expect `int` here, CAENDigitizer library returns floats...)
-					)
-					serialized_data = serialized_data.tobytes()
-					
-					event = pyeudaq.Event("RawEvent", "CAEN_DT5748") # Not sure what these strings exactly are...
-					event.SetTriggerN(n_trigger)
-					event.AddBlock(
-						n_trigger, # `id`, whatever that means.
-						serialized_data, # `data`, the data to append.
-					)
-					
-					if n_trigger == 0: # Add "header information".
-						event.SetBORE() # beginning-of-run-event (BORE). http://eudaq.github.io/manual/EUDAQUserManual_v2_0_1.pdf#glo%3ABORE
-						event.SetTag('channels_mapping_str', repr(self.channels_mapping)) # Literally whatever the `channels_mapping` parameter in the config file was, e.g. `{'DUT_1': [['CH0','CH1'],['CH2','CH3']], 'DUT_2': [['CH4','CH5'],['CH6','CH7']]}`.
-						event.SetTag('channels_names_list', repr(self.channels_names_list)) # A list with the channels that were acquired and in the order they are stored in the raw data, e.g. `['CH0','CH1','CH2',...]`
-						event.SetTag('number_of_DUTs', repr(len(self.channels_mapping))) # Number of DUTs that were specified in `channels_mapping` in the config file.
-						event.SetTag('sampling_frequency_MHz', repr(self._digitizer.get_sampling_frequency())) # Integer number.
-						event.SetTag('n_samples_per_waveform', repr(DIGITIZER_RECORD_LENGTH)) # Number of samples per waveform to decode the raw data.
-						n_dut = 0
-						for dut_name, dut_channels in self.channels_mapping.items():
-							dut_label = f'DUT_{n_dut}' # DUT_0, DUT_1, ...
-							event.SetTag(f'{dut_label}_name', repr(dut_name)) # String with the name of the DUT, defined by the user in the config file as the key of the `channels_mapping` dictionary.
-							event.SetTag(f'{dut_label}_channels_matrix', repr(dut_channels)) # List with channels names, e.g. `"[['CH0','CH1'],['CH2','CH3']]"`.
-							event.SetTag(f'{dut_label}_channels_arrangement', repr([f'{item}: {i},{j}' for i,row in enumerate(dut_channels) for j,item in enumerate(row)])) # End up with something of the form `"['CH0: 0,0', 'CH1: 0,1', 'CH2: 1,0', 'CH3: 1,1']"`
-							event.SetTag(f'{dut_label}_n_channels', repr(sum([len(_) for _ in dut_channels]))) # Number of channels (i.e. number of waveforms) belonging to this DUT.
-							n_dut += 1
-					self.SendEvent(event)
-					n_trigger += 1
+					self.events_queue.put(this_trigger_waveforms)
 
 if __name__ == "__main__":
 	import time
