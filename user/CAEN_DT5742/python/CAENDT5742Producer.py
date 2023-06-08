@@ -152,7 +152,7 @@ class CAENDT5742Producer(pyeudaq.Producer):
 
 	@exception_handler
 	def RunLoop(self):
-		n_trigger = 0;
+		n_trigger = 0
 		while(self.is_running):
 			if self._digitizer.get_acquisition_status()['at least one event available for readout'] == True:
 				waveforms = self._digitizer.get_waveforms(get_time=False, get_ADCu_instead_of_volts=True)
