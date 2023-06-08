@@ -138,6 +138,9 @@ class CAENDT5742Producer(pyeudaq.Producer):
 	@exception_handler
 	def DoStopRun(self):
 		self._digitizer.stop_acquisition()
+		while self._digitizer.get_acquisition_status()['at least one event available for readout'] == True:
+			# Wait for any remaining data that is still in the memory of the digitizer.
+			time.sleep(.1)
 		self.is_running = 0
 
 	@exception_handler
