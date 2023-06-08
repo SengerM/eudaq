@@ -47,6 +47,7 @@ class CAENDT5742Producer(pyeudaq.Producer):
 		pyeudaq.Producer.__init__(self, name, runctrl)
 		self.is_running = 0
 		EUDAQ_INFO('CAENDT5742Producer: New instance')
+		self._CAEN_lock = threading.Lock() # To ensure a responsible and thread-safe handling.
 
 	@exception_handler
 	def DoInitialise(self):
@@ -140,9 +141,13 @@ class CAENDT5742Producer(pyeudaq.Producer):
 		
 	@exception_handler
 	def DoStopRun(self):
-		self._digitizer.stop_acquisition()
-		while self._digitizer.get_acquisition_status()['at least one event available for readout'] == True:
+		with self._CAEN_lock:
+			self._digitizer.stop_acquisition()
+		is_there_stuff_still_in_the_digitizer_memory = True
+		while is_there_stuff_still_in_the_digitizer_memory:
 			# Wait for any remaining data that is still in the memory of the digitizer.
+			with self._CAEN_lock:
+				is_there_stuff_still_in_the_digitizer_memoryself._digitizer.get_acquisition_status()['at least one event available for readout'] == True:
 			time.sleep(.1)
 		self.events_queue.join() # Wait for all the waveforms to be processed.
 		self.is_running = 0
@@ -180,7 +185,8 @@ class CAENDT5742Producer(pyeudaq.Producer):
 					event.SetTag('channels_mapping_str', repr(self.channels_mapping)) # Literally whatever the `channels_mapping` parameter in the config file was, e.g. `{'DUT_1': [['CH0','CH1'],['CH2','CH3']], 'DUT_2': [['CH4','CH5'],['CH6','CH7']]}`.
 					event.SetTag('channels_names_list', repr(self.channels_names_list)) # A list with the channels that were acquired and in the order they are stored in the raw data, e.g. `['CH0','CH1','CH2',...]`
 					event.SetTag('number_of_DUTs', repr(len(self.channels_mapping))) # Number of DUTs that were specified in `channels_mapping` in the config file.
-					event.SetTag('sampling_frequency_MHz', repr(self._digitizer.get_sampling_frequency())) # Integer number.
+					with self._CAEN_lock:
+						event.SetTag('sampling_frequency_MHz', repr(self._digitizer.get_sampling_frequency())) # Integer number.
 					event.SetTag('n_samples_per_waveform', repr(DIGITIZER_RECORD_LENGTH)) # Number of samples per waveform to decode the raw data.
 					n_dut = 0
 					for dut_name, dut_channels in self.channels_mapping.items():
@@ -197,10 +203,11 @@ class CAENDT5742Producer(pyeudaq.Producer):
 		threading.Thread(target=thread_target_function, daemon=True).start()
 		
 		while(self.is_running):
-			if self._digitizer.get_acquisition_status()['at least one event available for readout'] == True:
-				waveforms = self._digitizer.get_waveforms(get_time=False, get_ADCu_instead_of_volts=True)
-				for this_trigger_waveforms in waveforms: # Waveforms is a list of dictionaries, each of which contains the waveforms from each trigger.
-					self.events_queue.put(this_trigger_waveforms)
+			with self._CAEN_lock:
+				if self._digitizer.get_acquisition_status()['at least one event available for readout'] == True:
+					waveforms = self._digitizer.get_waveforms(get_time=False, get_ADCu_instead_of_volts=True)
+					for this_trigger_waveforms in waveforms: # Waveforms is a list of dictionaries, each of which contains the waveforms from each trigger.
+						self.events_queue.put(this_trigger_waveforms)
 
 if __name__ == "__main__":
 	import argparse
