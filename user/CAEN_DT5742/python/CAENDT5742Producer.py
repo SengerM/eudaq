@@ -11,6 +11,7 @@ import ast
 import numpy
 import threading
 import queue
+import time
 
 DIGITIZER_RECORD_LENGTH = 1024
 
@@ -202,12 +203,31 @@ class CAENDT5742Producer(pyeudaq.Producer):
 					self.events_queue.put(this_trigger_waveforms)
 
 if __name__ == "__main__":
-	import time
+	import argparse
 	
-	myproducer = CAENDT5742Producer("CAEN_digitizer", "tcp://localhost:44000")
-	print ("Connecting to runcontrol in localhost:44000...")
+	parser = argparse.ArgumentParser()
+	parser.add_argument('--runctrl', '-r',
+		metavar = 'address',
+		help = 'Address of the run control, for example `"tcp://localhost:44000"`.',
+		required = True,
+		dest = 'runctrl',
+		type = str,
+	)
+	parser.add_argument('--name',
+		metavar = 'name',
+		help = 'A name for the producer. Default is `"CAEN_digitizer"`.',
+		required = False,
+		dest = 'name',
+		type = str,
+		default = 'CAEN_digitizer',
+	)
+	args = parser.parse_args()
+	
+	myproducer = CAENDT5742Producer(args.name, args.runctrl)
+	print (f"Connecting to runcontrol in {repr(args.runctrl)}...")
 	myproducer.Connect()
 	time.sleep(2)
-	print('Ready!')
+	print('Connected!')
+	print(f'Producer {repr(args.name)} is ready.')
 	while(myproducer.IsConnected()):
 		time.sleep(1)
